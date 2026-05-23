@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Target time defaults to 18:10 if no argument is passed
+TARGET_TIME=${1:-"00:00"}
+
+echo "Configured execution target time: $TARGET_TIME"
+
+while true
+do
+    echo "Starting Supabase sync script..."
+    # Pass the time string as a command line argument to Python
+    python3 /home/Seb06/main.py "$TARGET_TIME"
+    echo "Script stopped or crashed. Restarting engine in 10 seconds..."
+    sleep 10
+done
