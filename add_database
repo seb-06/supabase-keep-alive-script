@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="/home/Seb06/.env"
+DATABASE_FILE="${DATABASE_FILE:-/app/databases.txt}"
 name=""
 
 usage() {
@@ -17,56 +17,30 @@ while getopts ":n:" opt; do
 done
 
 shift $((OPTIND - 1))
-
 [[ $# -eq 2 ]] || usage
 
 url="$1"
 key="$2"
 
-touch "$ENV_FILE"
+touch "$DATABASE_FILE"
 
 if [[ -z "$name" ]]; then
-    existing_list="$(grep '^SUPABASE_DATABASES=' "$ENV_FILE" | cut -d= -f2- || true)"
-    if [[ -z "$existing_list" ]]; then
-        name="database-1"
-    else
-        max_num=$(
-            printf '%s\n' "$existing_list" | tr ',' '\n' |
-            sed -n 's/^database-\([0-9][0-9]*\)$/\1/p' |
-            sort -n | tail -n1
-        )
-        if [[ -z "$max_num" ]]; then
-            name="database-1"
-        else
-            name="database-$((max_num + 1))"
-        fi
-    fi
+    max_num=$(
+        awk -F'|' '
+            $1 ~ /^database-[0-9]+$/ {
+                sub(/^database-/, "", $1)
+                if ($1 > max) max = $1
+            }
+            END { print max + 1 }
+        ' "$DATABASE_FILE"
+    )
+    name="database-$max_num"
 fi
 
-env_prefix="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
-
-if grep -q "^${env_prefix}_URL=" "$ENV_FILE" || grep -q "^${env_prefix}_KEY=" "$ENV_FILE"; then
+if awk -F'|' -v wanted="$name" '$1 == wanted { found=1 } END { exit !found }' "$DATABASE_FILE"; then
     echo "Error: database '$name' already exists."
     exit 1
 fi
 
-if grep -q '^SUPABASE_DATABASES=' "$ENV_FILE"; then
-    current_list="$(grep '^SUPABASE_DATABASES=' "$ENV_FILE" | cut -d= -f2-)"
-    if [[ -n "$current_list" ]]; then
-        new_list="${current_list},${name}"
-    else
-        new_list="${name}"
-    fi
-    sed -i "s/^SUPABASE_DATABASES=.*/SUPABASE_DATABASES=${new_list}/" "$ENV_FILE"
-else
-    echo "SUPABASE_DATABASES=${name}" >> "$ENV_FILE"
-fi
-
-{
-    echo ""
-    echo "${env_prefix}_URL=${url}"
-    echo "${env_prefix}_KEY=${key}"
-} >> "$ENV_FILE"
-
-echo "Added database '${name}' to ${ENV_FILE}"
-
+printf '%s|%s|%s\n' "$name" "$url" "$key" >> "$DATABASE_FILE"
+echo "Added database '${name}' to ${DATABASE_FILE}"

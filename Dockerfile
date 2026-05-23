@@ -6,8 +6,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
-COPY run.sh .
+COPY add_database.sh .
+COPY docker-entrypoint.sh .
 
-RUN chmod +x /app/run.sh
+RUN chmod +x /app/add_database.sh /app/docker-entrypoint.sh
 
-CMD ["/app/run.sh"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["python", "/app/main.py"]

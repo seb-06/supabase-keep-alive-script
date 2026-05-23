@@ -2,36 +2,46 @@ import os
 import sys
 import time
 import re
+from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client
 
-load_dotenv(dotenv_path="/home/Seb06/.env")
+load_dotenv()
 
-target_time_str = "18:10"
-if len(sys.argv) > 1:
-    provided_time = sys.argv[1]
-    if re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", provided_time):
-        target_time_str = provided_time
-    else:
-        print(f"Warning: Invalid time format '{provided_time}'. Defaulting to 18:10.")
+DATABASE_FILE = Path(os.environ.get("DATABASE_FILE", "/app/databases.txt"))
+DEFAULT_TARGET_TIME = os.environ.get("TARGET_TIME", "00:00")
 
-TARGET_HOUR, TARGET_MINUTE = map(int, target_time_str.split(":"))
-print(f"Target runtime configured for: {TARGET_HOUR:02d}:{TARGET_MINUTE:02d}")
 
-def load_database_configs():
-    raw_names = os.environ.get("SUPABASE_DATABASES", "")
-    names = [name.strip() for name in raw_names.split(",") if name.strip()]
+def parse_target_time(argv):
+    target_time_str = DEFAULT_TARGET_TIME
+    if len(argv) > 1:
+        provided_time = argv[1]
+        if re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", provided_time):
+            target_time_str = provided_time
+        else:
+            print(f"Warning: Invalid time format '{provided_time}'. Defaulting to {DEFAULT_TARGET_TIME}.")
+    return target_time_str
 
+
+def load_database_configs(path=DATABASE_FILE):
     databases = []
-    for name in names:
-        env_prefix = name.upper().replace("-", "_")
-        url = os.environ.get(f"{env_prefix}_URL")
-        key = os.environ.get(f"{env_prefix}_KEY")
 
-        if not url or not key:
-            print(f"Skipping {name}: Missing {env_prefix}_URL or {env_prefix}_KEY.")
+    if not path.exists():
+        print(f"Database file not found: {path}")
+        return databases
+
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
             continue
+
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            print(f"Skipping malformed database entry: {line}")
+            continue
+
+        name, url, key = [part.strip() for part in parts]
 
         if not url.startswith("https://"):
             print(f"Skipping {name}: Invalid URL.")
@@ -39,48 +49,49 @@ def load_database_configs():
 
         try:
             client = create_client(url, key)
-            databases.append({
-                "name": name,
-                "url": url,
-                "key": key,
-                "client": client,
-            })
+            databases.append({"name": name, "client": client})
             print(f"{name} initialized successfully.")
         except Exception as init_err:
             print(f"Skipping {name}: Initialization error - {init_err}")
 
     return databases
 
-DATABASES = load_database_configs()
 
-def query_databases():
-    if not DATABASES:
+def query_databases(databases):
+    if not databases:
         print(f"[{datetime.now()}] Execution skipped: No active database clients available.")
         return
 
-    for db in DATABASES:
+    for db in databases:
         try:
             response = db["client"].table("people").select("*").execute()
             print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved.")
-        except Exception as e:
-            print(f"[{datetime.now()}] {db['name']} query error: {e}")
+        except Exception as err:
+            print(f"[{datetime.now()}] {db['name']} query error: {err}")
 
-def get_seconds_until_target():
+
+def get_seconds_until_target(target_hour, target_minute):
     now = datetime.now()
-    target = now.replace(hour=TARGET_HOUR, minute=TARGET_MINUTE, second=0, microsecond=0)
+    target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
     if now >= target:
-        target += timedelta(days=1)
+        target += timedelta(hours=12)
     return int((target - now).total_seconds())
 
+
 if __name__ == "__main__":
-    print("Script started in safety-check mode...")
+    target_time_str = parse_target_time(sys.argv)
+    target_hour, target_minute = map(int, target_time_str.split(":"))
+    print(f"Target runtime configured for: {target_hour:02d}:{target_minute:02d}")
+    print(f"Using database file: {DATABASE_FILE}")
+    print("Script started in scheduler mode...")
+
     while True:
         try:
-            sleep_duration = get_seconds_until_target() / 2
-            print(f"Sleeping for {sleep_duration} seconds until {TARGET_HOUR:02d}:{TARGET_MINUTE:02d}...")
-            time.sleep(sleep_duration)
-
-            query_databases()
+            sleep_duration = get_seconds_until_target(target_hour, target_minute)
+            print(f"Sleeping for {sleep_duration} seconds until next run...")
+            time.sleep(max(sleep_duration, 1))
+            databases = load_database_configs()
+            query_databases(databases)
             time.sleep(60)
         except KeyboardInterrupt:
             print("Script manually stopped.")
@@ -88,4 +99,3 @@ if __name__ == "__main__":
         except Exception as general_err:
             print(f"Loop error occurred: {general_err}")
             time.sleep(10)
-
