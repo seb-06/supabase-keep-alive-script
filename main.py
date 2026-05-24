@@ -73,8 +73,10 @@ def query_databases(databases):
 def get_seconds_until_target(target_hour, target_minute):
     now = datetime.now()
     target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-    if now >= target:
+
+    while target <= now:
         target += timedelta(hours=12)
+
     return int((target - now).total_seconds())
 
 

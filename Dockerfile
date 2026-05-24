@@ -12,4 +12,4 @@ COPY docker-entrypoint.sh .
 RUN chmod +x /app/add_database.sh /app/docker-entrypoint.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["python", "/app/main.py"]
+CMD ["python", "-u", "/app/main.py"]
