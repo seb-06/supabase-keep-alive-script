@@ -63,35 +63,48 @@ def query_databases(databases):
         return
 
     for db in databases:
-        try:
-            response = db["client"].table("people").select("*").execute()
-            print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from people.")
-            continue
-        except Exception as err:
-            code = getattr(err, "code", None)
-            message = getattr(err, "message", None)
-            details = getattr(err, "details", None)
-            hint = getattr(err, "hint", None)
+        for table_name in ("people", "People"):
+            try:
+                response = db["client"].table(table_name).select("*").execute()
+                print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from {table_name}.")
+                break
+            except Exception as err:
+                code = getattr(err, "code", None)
+                message = getattr(err, "message", None)
+                details = getattr(err, "details", None)
+                hint = getattr(err, "hint", None)
 
-            combined = " ".join(
-                str(x) for x in (code, message, details, hint, err) if x
-            ).lower()
+                if not any([code, message, details, hint]) and hasattr(err, "args") and err.args:
+                    first = err.args[0]
+                    if isinstance(first, dict):
+                        code = first.get("code")
+                        message = first.get("message")
+                        details = first.get("details")
+                        hint = first.get("hint")
 
-            missing_table = (
-                code == "42P01"
-                or "42p01" in combined
-                or ("relation" in combined and "does not exist" in combined)
-            )
+                combined = " ".join(
+                    str(x) for x in (code, message, details, hint, err) if x
+                ).lower()
 
-            if not missing_table:
-                print(f"[{datetime.now()}] {db['name']} query error: {err}")
-                continue
+                should_try_fallback = (
+                    table_name == "people"
+                    and (
+                        code in ("42P01", "PGRST205")
+                        or "42p01" in combined
+                        or "pgrst205" in combined
+                        or ("could not find the table" in combined and "public.people" in combined)
+                        or ("perhaps you meant" in combined and "public.people" in combined)
+                    )
+                )
 
-        try:
-            response = db["client"].table("People").select("*").execute()
-            print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from People.")
-        except Exception as fallback_err:
-            print(f"[{datetime.now()}] {db['name']} query error: people and People both failed. Final error: {fallback_err}")
+                if should_try_fallback:
+                    print(f"[{datetime.now()}] {db['name']} people not found, trying People...")
+                    continue
+
+                print(f"[{datetime.now()}] {db['name']} query error on {table_name}: {err}")
+                break
+        else:
+            print(f"[{datetime.now()}] {db['name']} query error: people and People both failed.")
 
 
 def get_seconds_until_target(target_hour, target_minute):
