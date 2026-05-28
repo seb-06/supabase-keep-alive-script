@@ -2,3 +2,4 @@
 db.txt
 databases.txt
 supabase-sync/
+local.add_database.sh
