@@ -66,17 +66,32 @@ def query_databases(databases):
         try:
             response = db["client"].table("people").select("*").execute()
             print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from people.")
+            continue
         except Exception as err:
-            err_msg = str(err)
+            code = getattr(err, "code", None)
+            message = getattr(err, "message", None)
+            details = getattr(err, "details", None)
+            hint = getattr(err, "hint", None)
 
-            if "42P01" in err_msg or "relation" in err_msg.lower() and "does not exist" in err_msg.lower():
-                try:
-                    response = db["client"].table("People").select("*").execute()
-                    print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from People.")
-                except Exception as fallback_err:
-                    print(f"[{datetime.now()}] {db['name']} query error: people and People both failed. Final error: {fallback_err}")
-            else:
+            combined = " ".join(
+                str(x) for x in (code, message, details, hint, err) if x
+            ).lower()
+
+            missing_table = (
+                code == "42P01"
+                or "42p01" in combined
+                or ("relation" in combined and "does not exist" in combined)
+            )
+
+            if not missing_table:
                 print(f"[{datetime.now()}] {db['name']} query error: {err}")
+                continue
+
+        try:
+            response = db["client"].table("People").select("*").execute()
+            print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from People.")
+        except Exception as fallback_err:
+            print(f"[{datetime.now()}] {db['name']} query error: people and People both failed. Final error: {fallback_err}")
 
 
 def get_seconds_until_target(target_hour, target_minute):
