@@ -1,3 +1,4 @@
 .env
 db.txt
 databases.txt
+supabase-sync/

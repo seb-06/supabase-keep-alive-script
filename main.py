@@ -65,9 +65,18 @@ def query_databases(databases):
     for db in databases:
         try:
             response = db["client"].table("people").select("*").execute()
-            print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved.")
+            print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from people.")
         except Exception as err:
-            print(f"[{datetime.now()}] {db['name']} query error: {err}")
+            err_msg = str(err)
+
+            if "42P01" in err_msg or "relation" in err_msg.lower() and "does not exist" in err_msg.lower():
+                try:
+                    response = db["client"].table("People").select("*").execute()
+                    print(f"[{datetime.now()}] {db['name']} success: {len(response.data)} rows retrieved from People.")
+                except Exception as fallback_err:
+                    print(f"[{datetime.now()}] {db['name']} query error: people and People both failed. Final error: {fallback_err}")
+            else:
+                print(f"[{datetime.now()}] {db['name']} query error: {err}")
 
 
 def get_seconds_until_target(target_hour, target_minute):
